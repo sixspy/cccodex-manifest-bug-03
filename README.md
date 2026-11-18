@@ -31,6 +31,30 @@ CC_Codex 二期（26.11）**数据工程**产品线：**湖区落地清单台**�
 
 预留切口（未做，供后续功能题）：清单换版生效窗、闭合作废回开放、批量失败闭互斥、跨区依赖冻结、清单回灌等。
 
+## 可见性对账（重算口径）
+
+- **单一快照**：错位列表、报告详情、批次水线、对账复跑台四处读同一份快照，数字必须相同。
+- **落库形态：整笔回滚替换**。同一截至日先清旧摘要与旧错位明细，再写本次快照；
+  失败整笔回滚、旧摘要原样保留。旧错位不跨报告悬挂，只在本次报告内以「已消除」留痕一行。
+- **写锁**：重算走 `BEGIN IMMEDIATE`（`app/db.py:get_db_immediate`），库开 WAL，
+  两名值班并发时串行替换，不会双写摘要。
+- **对齐校验**：写库前回读实物表逐项复核摘要（已闭合批/收集中批/对象/孤儿/错位/明细偏差），偏一项即停，接口吐短句。
+- **复跑**：`--rounds 2` 连续两轮逐项一致才落库通过。
+
+```bash
+# 错位列表 / 报告详情 / 批次水线 / 对账复跑台
+curl -s -b cookie.txt localhost:6900/api/visibility-reports
+curl -s -b cookie.txt localhost:6900/api/visibility-reports/1
+curl -s -b cookie.txt 'localhost:6900/api/visibility-waterline?as_of_date=2026-11-16'
+curl -s -b cookie.txt -X POST localhost:6900/api/visibility-reconcile \
+  -H 'Content-Type: application/json' -d '{"as_of_date":"2026-11-16","rounds":2}'
+
+# 编排侧复跑校验（数字不稳非零退出）
+DATABASE_PATH=/app/instance/manifest_lab.db python scripts/reconcile_check.py --rounds 2
+```
+
+复盘步骤与验收口径见 [docs/postmortem-visibility.md](docs/postmortem-visibility.md)。
+
 ## 本地（推荐反馈环）
 
 ```powershell

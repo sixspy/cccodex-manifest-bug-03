@@ -91,3 +91,11 @@ th { color: var(--muted); font-weight: 500; }
 }
 .muted { color: var(--muted); }
 .panel { margin-top: 1rem; padding-top: 0.5rem; border-top: 1px dashed var(--line); }
+label.inline { display: inline-flex; align-items: center; gap: 0.4rem; margin: 0; color: var(--muted); }
+label.inline input { width: 8.5rem; }
+.delta { font-weight: 700; }
+.delta.up, .pill.state.up { color: var(--danger); border-color: var(--danger); }
+.delta.down, .pill.state.down { color: var(--accent); border-color: var(--accent); }
+.delta.flat, .pill.state.flat { color: var(--muted); border-color: var(--line); }
+.pill.state { padding: 0.1rem 0.35rem; }
+tr.strong td { font-weight: 700; color: var(--accent); }

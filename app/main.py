@@ -10,11 +10,15 @@ from litestar.status_codes import HTTP_302_FOUND
 from app.config import Config
 from app.db import init_db
 from app.services import (
+    VisibilityError,
+    batch_waterline,
     close_batch,
     get_batch,
+    get_report,
     list_batches,
     list_objects,
     list_reports,
+    reconcile,
     register_object,
     run_visibility,
 )
@@ -171,19 +175,73 @@ async def api_close(request: Request, batch_id: int) -> Response:
     )
 
 
+def _short_error(exc: ServiceError | VisibilityError) -> Response:
+    return Response(
+        content={"ok": False, "error": exc.message},
+        status_code=exc.status_code,
+        media_type="application/json",
+    )
+
+
+def _int_arg(raw, default: int) -> int:
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
 @get("/api/visibility-reports")
 async def api_reports(request: Request) -> dict:
     require_user(request)
     return {"items": list_reports()}
 
 
-@post("/api/visibility-reports")
-async def api_run_report(request: Request) -> dict:
+@get("/api/visibility-reports/{report_id:int}")
+async def api_report_detail(request: Request, report_id: int) -> dict:
     require_user(request)
-    body = await request.json()
-    report = run_visibility(str(body.get("as_of_date", "2026-11-16")))
+    report = get_report(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="报告不存在")
+    return {"report": report}
+
+
+@post("/api/visibility-reports")
+async def api_run_report(request: Request) -> Response:
+    require_user(request)
+    body = await request.json() or {}
+    try:
+        report = run_visibility(
+            str(body.get("as_of_date", "2026-11-16")),
+            rounds=_int_arg(body.get("rounds"), 1),
+        )
+    except VisibilityError as exc:
+        return _short_error(exc)
     return Response(
         content={"ok": True, "report": report},
+        status_code=200,
+        media_type="application/json",
+    )
+
+
+@get("/api/visibility-waterline")
+async def api_waterline(request: Request, as_of_date: str = "2026-11-16") -> dict:
+    require_user(request)
+    return batch_waterline(as_of_date)
+
+
+@post("/api/visibility-reconcile")
+async def api_reconcile(request: Request) -> Response:
+    require_user(request)
+    body = await request.json() or {}
+    try:
+        result = reconcile(
+            str(body.get("as_of_date", "2026-11-16")),
+            rounds=_int_arg(body.get("rounds"), 2),
+        )
+    except VisibilityError as exc:
+        return _short_error(exc)
+    return Response(
+        content={"ok": True, "result": result},
         status_code=200,
         media_type="application/json",
     )
@@ -202,7 +260,10 @@ app = Litestar(
         api_register,
         api_close,
         api_reports,
+        api_report_detail,
         api_run_report,
+        api_waterline,
+        api_reconcile,
         create_static_files_router(path="/static", directories=[str(STATIC)]),
     ],
     on_startup=[_on_startup],
